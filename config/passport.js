@@ -18,26 +18,24 @@ module.exports = function (passport) {
       callbackURL: '/auth/google/callback'
     },
       async (request, accessToken, refreshToken, profile, done) => {
-        console.log('passport.js - profile: ', profile);
-
-        // const new User = {
-        //   googleId: profile.id,
-        //   displayName: profile.displayName,
-        //   firstName: profile.firstName,
-        //   lastName: profile.lastName,
-        //   image: profile.photoss[0].value
-        // }
-        // try {
-        //   let user = await User.findOne({ googleId: profile.id })
-        //   if (user) {
-        //     done(null, user)
-        //   } else {
-        //     user = User.create(newUser)
-        //     done(null, user)
-        //   }
-        // } catch (err) {
-        //   cosole.error(err)
-        // }
+        const newUser = {
+          googleId: profile.id,
+          displayName: profile.displayName,
+          firstName: profile.name.givenName,
+          lastName: profile.name.familyName,
+          image: profile.photos[0].value
+        }
+        try {
+          let user = await User.findOne({ googleId: profile.id })
+          if (user) {
+            done(null, user)
+          } else {
+            user = await User.create(newUser)
+            done(null, user)
+          }
+        } catch (err) {
+          cosole.error(err)
+        }
       }
     )
   )

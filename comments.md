@@ -303,3 +303,186 @@ GOOGLE_CLIENT_SECRET = 1GrkF0j-********-mdsrt
 Passport - это промежуточное ПО для аутентификации для Node.js. Чрезвычайно гибкий и модульный, Passport можно ненавязчиво добавить в любое веб-приложение на основе Express. Исчерпывающий набор стратегий поддерживает аутентификацию с использованием имени пользователя и пароля, Facebook, Twitter и др.
 
 [Passport strategy for Google OAuth 2.0](http://www.passportjs.org/packages/passport-google-oauth2/)
+
+---
+
+### Passport Config & Sessions
+
+---
+
+### User module
+
+/models/User.js
+
+```js
+const mongoose = require('mongoose')
+
+const UserShema = new mongoose.Schema({
+  googleId: {
+    type: String,
+    required: true,
+  },
+
+  displayName: {
+    type: String,
+    required: true,
+  },
+
+  firstName: {
+    type: String,
+    required: true,
+  },
+
+  lastName: {
+    type: String,
+    required: true,
+  },
+
+  image: {
+    type: String,
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now(),
+  },
+})
+
+module.exports = mongoose.model('User', UserShema)
+```
+
+---
+
+### Passport Google Strategy
+
+Модуль passport позволяет аутентифицироваться с помощью Google в приложении на Node.js
+
+Воспользуемся [документацией ](http://www.passportjs.org/packages/passport-google-oauth2/) и создадим конфигурационный файл /config/passport.js для работы с аутентификацией 2.0 от Google и записи информации о текущем пользователе в БД MongoDB
+
+```js
+const GoogleStrategy = require('passport-google-oauth20').Strategy
+const mongoose = require('mongoose')
+const User = require('../models/User')
+
+module.exports = function (passport) {
+  passport.use(
+    new GoogleStrategy(
+      {
+        clientID: process.env.GOOGLE_CLIENT_ID,
+        clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+        callbackURL: '/auth/google/callback',
+      },
+      async (request, accessToken, refreshToken, profile, done) => {
+        console.log('passport.js - profile: ', profile)
+      }
+    )
+  )
+
+  //  In order to support login sessions, Passport will serialize and deserialize user instances to and from the session (http://www.passportjs.org/docs/downloads/html/)
+
+  passport.serializeUser((user, done) => done(null, user.id))
+
+  passport.deserializeUser((id, done) => {
+    User.findById(id, (err, user) => done(err, user))
+  })
+}
+```
+
+---
+
+### Auth Routes
+
+Понадобиться дополнительный маршрут для аутентификации (/auth/)
+Coplfybv его в файле app.js:
+
+```js
+// Routes
+app.use('/', require('./routes/index'))
+app.use('/auth', require('./routes/auth'))
+
+const PORT = process.env.PORT || 3000
+```
+
+Детализируем маршруты в файле /routes/auth.js
+
+```js
+const express = require('express')
+const passport = require('passport')
+const router = express.Router()
+
+// @desc Auth with Goole
+// @route Get /auth/google
+//  http://www.passportjs.org/packages/passport-google-oauth2/
+
+router.get('/google', passport.authenticate('google', { scope: ['profile'] }))
+
+// @desc    Google auth callback
+// @route   GET /auth/google/callback
+//  http://www.passportjs.org/packages/passport-google-oauth2/
+
+router.get(
+  '/google/callback',
+  passport.authenticate('google', { failureRedirect: '/' }),
+  (req, res) => {
+    res.redirect('/dashboard')
+  }
+)
+
+module.exports = router
+```
+
+---
+
+### Save Google Profile Data
+
+Делаем дополнительные настройки в файле аутентификации config/passport.js :
+
+```js
+const GoogleStrategy = require('passport-google-oauth20').Strategy
+const mongoose = require('mongoose')
+const User = require('../models/User')
+
+module.exports = function (passport) {
+  passport.use(
+    new GoogleStrategy(
+      {
+        clientID: process.env.GOOGLE_CLIENT_ID,
+        clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+        callbackURL: '/auth/google/callback',
+      },
+      async (request, accessToken, refreshToken, profile, done) => {
+        const newUser = {
+          googleId: profile.id,
+          displayName: profile.displayName,
+          firstName: profile.name.givenName,
+          lastName: profile.name.familyName,
+          image: profile.photos[0].value,
+        }
+        try {
+          let user = await User.findOne({ googleId: profile.id })
+          if (user) {
+            done(null, user)
+          } else {
+            user = await User.create(newUser)
+            done(null, user)
+          }
+        } catch (err) {
+          cosole.error(err)
+        }
+      }
+    )
+  )
+
+  //  In order to support login sessions, Passport will serialize and deserialize user instances to and from the session (http://www.passportjs.org/docs/downloads/html/)
+
+  passport.serializeUser((user, done) => done(null, user.id))
+
+  passport.deserializeUser((id, done) => {
+    User.findById(id, (err, user) => done(err, user))
+  })
+}
+```
+
+После успешной аутентификации информация о пользователе записывается в коллекцию users базы storybooks MongoDB,
+cогласно ранее выполненых настроек (файл /config/db.js)
+
+---
