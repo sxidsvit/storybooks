@@ -206,3 +206,100 @@ app.use('/', require('./routes/index'))
 ```
 
 ---
+
+### Set Static Folder
+
+Подключаем папку со статическими файлами в app.js:
+
+```js
+const path = require('path')
+
+// Static folder
+app.use(express.static(path.join(__dirname, 'public')))
+```
+
+Для начала создаем файл стилей /public/css/style.css
+и полдключаем его - /views/layouts/main.hbs
+
+```htmn
+ <link rel="stylesheet" href="/css/style.css">
+```
+
+---
+
+### Login Layout
+
+Создаём дополнительный лейаут для страницы логина /views/layouts/login.hbs
+
+Во многом он корпирует /views/layouts/main.hbs, но есть отличия. Например, нам не нужен сайдбар
+
+Подключаем layout в файле описывающем маршруты /routes/index.js
+
+```js
+router.get('/', (req, res) => {
+  res.render('login', {
+    layout: 'login',
+  })
+})
+```
+
+Теперь файл /views/login.hbs будет использовать layout /views/layouts/login.hbs
+
+```html
+<h3><i class="fas fa-book-reader"></i> StoryBooks</h3>
+<div class="section">
+  <p class="lead">Create public and private stories from your life</p>
+</div>
+<div class="divider"></div>
+<div class="section">
+  <a href="/auth/google" class="btn red darken-1">
+    <i class="fab fa-google left"></i> Log In With Google
+  </a>
+</div>
+```
+
+Здесь и далее все необходимы стили прописываем в файле /public/css/styles.css
+
+---
+
+### Start Google Login
+
+Теперь нужны дополнительные настройки в [Google Cloud Platform](https://console.cloud.google.com/home/dashboard?project=youtube-glo&hl=ru&pli=1)
+
+Api & Services -> Enable API and Services -> Google+ API
+
+The Google+ API enables developers to build on top of the Google+ platform
+
+Включаем сервис ( если уже включен, то Manage) и переходим в настройки Credantials (Учётные данные)
+
+Сначала нужно получить доступ к Create OAuth client ID
+
+Создаём новый проект или используем уже существующий, чтобы получить (создать) данные для нового клиента как Веб-приложения.
+
+На начальном этапе, пока приложение не на хостинге, можно в секции "Разрешенные URI перенаправления" прописать локальный адрес приложения:
+
+```html
+http://localhost:3000/auth/google/callback
+```
+
+Теперь, после сохранения данных получим два ключа:
+
+```txt
+- Идентификатор клиента - 115500663502-********.apps.googleusercontent.com
+- Секретный код клиента - 1GrkF0j-********-mdsrt
+```
+
+Оба ключа поместим в файл /config/config.env
+
+```js
+GOOGLE_CLIENT_ID = 115500663502-********.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET = 1GrkF0j-********-mdsrt
+```
+
+---
+
+### Passport Intro
+
+Passport - это промежуточное ПО для аутентификации для Node.js. Чрезвычайно гибкий и модульный, Passport можно ненавязчиво добавить в любое веб-приложение на основе Express. Исчерпывающий набор стратегий поддерживает аутентификацию с использованием имени пользователя и пароля, Facebook, Twitter и др.
+
+[Passport strategy for Google OAuth 2.0](http://www.passportjs.org/packages/passport-google-oauth2/)
