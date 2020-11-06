@@ -576,3 +576,181 @@ router.get('/dashboard', ensureAuth, (req, res) => {
 ---
 
 ### Store Sessions In Database
+
+Мордуль sessions - создаёт middleware для работы с ссесиями, а модуль connect-mongo - хранилище ссесий в MongoDB для Express
+
+Вносим изменения в app.js согласно [документации](https://www.npmjs.com/package/connect-mongo)
+
+```js
+const session = require('express-session')
+const MongoStore = require('connect-mongo')(session)
+```
+
+[Подключаем middleware](https://www.npmjs.com/package/connect-mongo):
+
+```js
+const mongoose = require('mongoose')
+...
+app.use(
+  session({
+    secret: 'keyboard cat',
+    resave: false,
+    saveUninitialized: false,
+    store: new MongoStore({ mongooseConnection: mongoose.connection }),
+  })
+)
+```
+
+После этих действий достаточно зарегистрироваться один раз, после чего быть переадресованным на страницу /dashborad. После перезанрузки мы попрежнему останемся на ней. Всё работает: данные о ссесии сохранены в MongoDB (коллекция sessions)
+
+```js
+{
+  _id: "tijCDPxhJ4kjQCv0nWINZztPpbE0nxvc"
+expires: 2020-11-20T20:46:23.932+00:00
+session: {"cookie":{"originalMaxAge":null,"expires":null,"httpOnly":true,"path":"/"},"passport":{"user":"5fa46fb5d651464a5ca697c7"}}
+}
+```
+
+---
+
+### Story Model
+
+/routes/index.js - передадим параметр запроса в метод рендеринга, чтобы понимать какой пользователь активен в настоящий момент
+
+```js
+router.get('/dashboard', ensureAuth, (req, res) => {
+  res.render('dashboard', {
+    name: req.user.firstName,
+  })
+})
+```
+
+Теперь параметр name доступен в /views/dashboards.hbs
+
+```html
+<h6>Dashboard</h6>
+<h3>Welcome, {{name}}</h3>
+<p>Here are list of your stories</p>
+```
+
+### Story Model
+
+/models/Story.js
+
+```js
+const mongoose = require('mongoose')
+
+const StorySchema = new mongoose.Schema({
+  title: {
+    type: String,
+    required: true,
+    trim: true,
+  },
+  body: {
+    type: String,
+    required: true,
+  },
+  status: {
+    type: String,
+    default: 'public',
+    enum: ['public', 'private'],
+  },
+  user: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now,
+  },
+})
+
+module.exports = mongoose.model('Story', StorySchema)
+```
+
+---
+
+### Dashboard Stories
+
+/routes/index.js - подключаем модель Story и делаем выборку из базы MongoDB
+
+```js
+const Story = require('../models/Story')
+...
+router.get('/dashboard', ensureAuth, async (req, res) => {
+  try {
+    const stories = await Story.find({ user: req.user.id }).lean()
+    res.render('dashboard', {
+      name: req.user.firstName,
+      stories
+    })
+  } catch(err) {
+    console.log(err)
+    res.render('error/500')
+  }
+})
+module.exports = router
+```
+
+Создаём два шаблона /views/error/404.hbs и /views/error/500.hbs для страниц ошибок:
+
+```html
+<h1>404 Not Found</h1>
+<p>We're sorry, this resource is not found</p>
+<a href="/dashboard" class="btn">Go to Dashboard</a>
+```
+
+```html
+<h1>Server Error</h1>
+<p>We're sorry, something went wrong</p>
+<a href="/dashboard" class="btn">Go to Dashboard</a>
+```
+
+И наконец, вносим изменения в шаблон /views/dashboard.hbs
+
+```html
+<h6>Dashboard</h6>
+<h3>Welcome {{name}}</h3>
+<p>Here are your stories</p>
+{{#if stories}}
+<table class="striped">
+  <thead>
+    <tr>
+      <th>Title</th>
+      <th>Date</th>
+      <th>Status</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {{#each stories}}
+    <tr>
+      <td><a href="/stories/{{_id}}">{{title}}</a></td>
+      <td>{{formatDate createdAt 'MMMM Do YYYY, h:mm:ss a'}}</td>
+      <td><span class="dash-status">{{status}}</span></td>
+      <td>
+        <a href="/stories/edit/{{_id}}" class="btn btn-float">
+          <i class="fas fa-edit"></i>
+        </a>
+
+        <form action="/stories/{{_id}}" method="POST" id="delete-form">
+          <input type="hidden" name="_method" value="DELETE" />
+          <button type="submit" class="btn red">
+            <i class="fas fa-trash"></i>
+          </button>
+        </form>
+      </td>
+    </tr>
+    {{/each}}
+  </tbody>
+</table>
+{{else}}
+<p>You have not created any stories</p>
+{{/if}}
+```
+
+---
+
+### Add Story
+
+Создадим кнопку для добавления story (записи текущего пользователя):
