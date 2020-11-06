@@ -486,3 +486,93 @@ module.exports = function (passport) {
 cогласно ранее выполненых настроек (файл /config/db.js)
 
 ---
+
+### Logout
+
+Согласно [документации](http://www.passportjs.org/docs/logout/): Passport exposes a logout() function on req (also aliased as logOut()) that can be called from any route handler which needs to terminate a login session. Invoking logout() will remove the req.user property and clear the login session (if any).
+
+То есть, не только нужен редирект, но еще нужно удалить ссесионые данные (сеанс входа)
+
+```js
+router.get('/logout', (req, res) => {
+  req.logout()
+  res.redirect('/')
+})
+```
+
+---
+
+### Navigation
+
+Создаём файл /partials/\_header.hbs, в который помещяем верстку для боковой выезжающей панели с меню
+
+```html
+...
+<ul class="sidenav" id="mobile-demo">
+  <li><a href="/stories">Public Stories</a></li>
+  <li><a href="/dashboard">Dashboard</a></li>
+  <li><a href="/auth/logout">Logout</a></li>
+</ul>
+...
+```
+
+В layout /layouts/main.hbs подключаем этот фрагмент кода
+
+```html
+<body>
+  {{>_header}}
+  <div class="container">{{{body}}}</div>
+</body>
+```
+
+и прописываем скрипт инициализации, взятый из документации на [Materialize](https://materializecss.com/navbar.html)
+
+```js
+<script>M.Sidenav.init(document.querySelector('.sidenav'))</script>
+```
+
+---
+
+### Auth Middleware
+
+Теперь нужно защитить роуты от доступа к ним неавторизованных пользователей.
+Создаём два middleware (файл /middleware/auth.js)
+
+```js
+module.exports = {
+  ensureAuth: function (req, res, next) {
+    if (req.isAuthenticated()) {
+      return next()
+    } else {
+      res.redirect('/')
+    }
+  },
+  ensureGuest: function (req, res, next) {
+    if (!req.isAuthenticated()) {
+      return next()
+    } else {
+      res.redirect('/dashboard')
+    }
+  },
+}
+```
+
+и вносим изменения в роуты (/routes/index.js):
+
+```js
+const { ensureAuth, ensureGuest } = require('../middleware/auth')
+
+router.get('/', ensureGuest, (req, res) => {
+  res.render('login', {
+    layout: 'login',
+  })
+})
+
+router.get('/dashboard', ensureAuth, (req, res) => {
+  res.render('dashboard')
+})
+```
+
+---
+
+### Store Sessions In Database
