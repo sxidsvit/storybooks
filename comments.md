@@ -1247,3 +1247,69 @@ router.get('/', ensureAuth, async (req, res) => {
 ---
 
 ### Edit Icon Helper
+
+Добавим иконку в верхнем правом углу заметки,
+которая указывает, что автор может редактировать её.
+
+/helpers/hbs.js
+
+```js
+  editIcon: function (storyUser, loggedUser, storyId, floating = true) {
+    if (storyUser._id.toString() == loggedUser._id.toString()) {
+      if (floating) {
+        return `<a href="/stories/edit/${storyId}" class="btn-floating halfway-fab blue"><i class="fas fa-edit fa-small"></i></a>`
+      } else {
+        return `<a href="/stories/edit/${storyId}"><i class="fas fa-edit"></i></a>`
+      }
+    } else {
+      return ''
+    }
+  },
+```
+
+Разумеется, порсле создания нового хелпера его нужно подключить в файлу app.js
+
+/views/stories/index.hbs
+
+```html
+<div class="col s12 m4">
+  <div class="card">
+    <div class="card-image">{{{editIcon user ../user _id}}}</div>
+  </div>
+</div>
+...
+```
+
+Здесь запись ../user означеет, что нужно взять но того user? который является автором текущей записи цикла, а выйти за пределы цикла (../) и взять авторизованного в данный момент user
+
+Комментарий.
+Если мы хотим передать HTML код в handlebars, то должны использовать ТРОЙНЫЕ фигурные скобки ( {{{ ...}}})
+
+Теперь нужно получить доступ к id авторизованного user.
+
+Создадим глобальную переменну res.locals.user в файле app.js
+Эта переменная будет доступна при обработке маршрутов
+
+```js
+// Passport middleware
+app.use(passport.initialize())
+app.use(passport.session())
+
+// Set global var
+app.use(function (req, res, next) {
+  res.locals.user = req.user || null
+  console.log('res.locals.user: ', res.locals.user)
+  next()
+})
+```
+
+[В официальной документации Express](https://expressjs.com/en/api.html#res.locals) про объект res.locals говориться следующее
+
+```txt
+res.locals
+An object that contains response local variables scoped to the request, and therefore available only to the view(s) rendered during that request / response cycle (if any). Otherwise, this property is identical to app.locals.
+
+This property is useful for exposing request-level information such as the request path name, authenticated user, user settings, and so on.
+```
+
+Поскольку мы находимся на роутах, которые требуют авторизации пользователя. то на этих маршрутах присутствует объект req.user
