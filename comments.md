@@ -679,7 +679,7 @@ const Story = require('../models/Story')
 ...
 router.get('/dashboard', ensureAuth, async (req, res) => {
   try {
-    const stories = await Story.find({ user: req.user.id }).lean()
+    const stories = await Story.find({ user: req.user.id }).lean() // удаляем лишнюю информацию из объект
     res.render('dashboard', {
       name: req.user.firstName,
       stories
@@ -754,3 +754,314 @@ module.exports = router
 ### Add Story
 
 Создадим кнопку для добавления story (записи текущего пользователя):
+
+/views/partials/\_add_btn.hbs
+
+```html
+<div class="fixed-action-btn">
+  <a
+    href="/stories/add"
+    class="btn-floating btn-large waves-effect waves-light red"
+    ><i class="fas fa-plus"></i
+  ></a>
+</div>
+```
+
+/views/layouts/main.hbs
+
+```html
+<body>
+  {{>_header}} {{>_add_btn}}
+  <div class="container">{{{body}}}</div>
+</body>
+```
+
+Создаем папку /views/stories, в которую будем помещать шаблоны записей (stories)
+
+_add.hbs_ - форма для создания записи (можно использовать шаблон Formik)
+
+```html
+<h3>Add Story</h3>
+<div class="row">
+  <form action="/stories" method="POST" class="col s12">
+    <div class="row">
+      <div class="input-field">
+        <input type="text" id="title" name="title" />
+        <label for="title">Title</label>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="input-field">
+        <select id="status" name="status">
+          <option value="public" selected>Public</option>
+          <option value="private">Private</option>
+        </select>
+        <label for="status">Status</label>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="input-field">
+        <h5>Tell Us Your Story:</h5>
+        <textarea id="body" name="body"></textarea>
+      </div>
+    </div>
+
+    <div class="row">
+      <input type="submit" value="Save" class="btn" />
+      <a href="/dashboard" class="btn orange">Cancel</a>
+    </div>
+  </form>
+</div>
+```
+
+Добавим новый маршрут /stories в файл app.js:
+
+```js
+// Routes
+app.use('/', require('./routes/index'))
+app.use('/auth', require('./routes/auth'))
+app.use('/stories', require('./routes/stories'))
+```
+
+Теперь нужно создать сами маршруты в файле /routes/stories.js. Конечный результат таков:
+
+```js
+const express = require('express')
+const router = express.Router()
+const { ensureAuth } = require('../middleware/auth')
+
+const Story = require('../models/Story')
+
+// @desc    Show add page
+// @route   GET /stories/add
+router.get('/add', ensureAuth, (req, res) => {
+  res.render('stories/add')
+})
+
+// @desc    Process add form
+// @route   POST /stories
+router.post('/', ensureAuth, async (req, res) => {
+  try {
+    req.body.user = req.user.id
+    await Story.create(req.body)
+    res.redirect('/dashboard')
+  } catch (err) {
+    console.error(err)
+    res.render('error/500')
+  }
+})
+
+// @desc    Show all stories
+// @route   GET /stories
+router.get('/', ensureAuth, async (req, res) => {
+  try {
+    const stories = await Story.find({ status: 'public' })
+      .populate('user')
+      .sort({ createdAt: 'desc' })
+      .lean()
+
+    res.render('stories/index', {
+      stories,
+    })
+  } catch (err) {
+    console.error(err)
+    res.render('error/500')
+  }
+})
+
+// @desc    Show single story
+// @route   GET /stories/:id
+router.get('/:id', ensureAuth, async (req, res) => {
+  try {
+    let story = await Story.findById(req.params.id).populate('user').lean()
+
+    if (!story) {
+      return res.render('error/404')
+    }
+
+    if (story.user._id != req.user.id && story.status == 'private') {
+      res.render('error/404')
+    } else {
+      res.render('stories/show', {
+        story,
+      })
+    }
+  } catch (err) {
+    console.error(err)
+    res.render('error/404')
+  }
+})
+
+// @desc    Show edit page
+// @route   GET /stories/edit/:id
+router.get('/edit/:id', ensureAuth, async (req, res) => {
+  try {
+    const story = await Story.findOne({
+      _id: req.params.id,
+    }).lean()
+
+    if (!story) {
+      return res.render('error/404')
+    }
+
+    if (story.user != req.user.id) {
+      res.redirect('/stories')
+    } else {
+      res.render('stories/edit', {
+        story,
+      })
+    }
+  } catch (err) {
+    console.error(err)
+    return res.render('error/500')
+  }
+})
+
+// @desc    Update story
+// @route   PUT /stories/:id
+router.put('/:id', ensureAuth, async (req, res) => {
+  try {
+    let story = await Story.findById(req.params.id).lean()
+
+    if (!story) {
+      return res.render('error/404')
+    }
+
+    if (story.user != req.user.id) {
+      res.redirect('/stories')
+    } else {
+      story = await Story.findOneAndUpdate({ _id: req.params.id }, req.body, {
+        new: true,
+        runValidators: true,
+      })
+
+      res.redirect('/dashboard')
+    }
+  } catch (err) {
+    console.error(err)
+    return res.render('error/500')
+  }
+})
+
+// @desc    Delete story
+// @route   DELETE /stories/:id
+router.delete('/:id', ensureAuth, async (req, res) => {
+  try {
+    let story = await Story.findById(req.params.id).lean()
+
+    if (!story) {
+      return res.render('error/404')
+    }
+
+    if (story.user != req.user.id) {
+      res.redirect('/stories')
+    } else {
+      await Story.remove({ _id: req.params.id })
+      res.redirect('/dashboard')
+    }
+  } catch (err) {
+    console.error(err)
+    return res.render('error/500')
+  }
+})
+
+// @desc    User stories
+// @route   GET /stories/user/:userId
+router.get('/user/:userId', ensureAuth, async (req, res) => {
+  try {
+    const stories = await Story.find({
+      user: req.params.userId,
+      status: 'public',
+    })
+      .populate('user')
+      .lean()
+
+    res.render('stories/index', {
+      stories,
+    })
+  } catch (err) {
+    console.error(err)
+    res.render('error/500')
+  }
+})
+
+module.exports = router
+```
+
+Согласно [документации](https://materializecss.com/select.html) в файл /views/main.hbs добавляем обработчик выбора Status (public, private) в шаблоне /views/partials/\_add.hbs
+
+```html
+<script>
+  M.Sidenav.init(document.querySelector('.sidenav'))
+  M.FormSelect.init(document.querySelector('#status'))
+</script>
+```
+
+Чтобы сделать инпут textaria более удобным для ввода информации,
+установим [CKEditor](https://ckeditor.com/).
+
+Modern JavaScript rich text editor with a modular architecture. Its clean UI and features provide the perfect WYSIWYG UX ❤️ for creating semantic content.
+
+Written in ES6 with MVC architecture, custom data model, virtual DOM.
+Responsive images and media embeds (videos, tweets).
+Custom output format: HTML and Markdown support.
+Boost productivity with auto-formatting and collaboration.
+Extensible and customizable by design.
+
+Подключаем в /views/layouts/main.hbs
+
+```html
+<script src="https://cdn.ckeditor.com/4.15.0/standard/ckeditor.js"></script>
+
+<script>
+  M.Sidenav.init(document.querySelector('.sidenav'))
+  M.FormSelect.init(document.querySelector('#status'))
+
+  CKEDITOR.replace('body', {
+    plugins: 'wysiwygarea, toolbar, basicstyles, link',
+  })
+</script>
+```
+
+В настройках мы ссылаемся на name="body" в textarea (/views/stories/add.hbs)
+
+```html
+<div class="row">
+  <div class="input-field">
+    <h5>Tell Us Your Story:</h5>
+    <textarea id="body" name="body"></textarea>
+  </div>
+</div>
+```
+
+Теперь, когда мы отправляем форму, в /routes/stoties.js нужно будет обработать body соответствующего POST-запроса.
+
+Добавим в файл app.js два парсера:
+
+```js
+app.use(express.urlencoded({ extended: false }))
+app.use(express.json())
+```
+
+В файле /routes/stories.js обработчик POST-запроса отправки формы извлекает только нужную информацию из объекта req: в нем содержится и информация о текущем пользователе (req.user) и данные формы (req.body):
+
+```js
+// @desc    Process add form
+// @route   POST / stories
+router.post('/', ensureAuth, async (req, res) => {
+  try {
+    req.body.user = req.user.id
+    await Story.create(req.body)
+    res.redirect('/dashboard')
+  } catch (err) {
+    console.error(err)
+    res.render('error/500')
+  }
+})
+```
+
+---
+
+### Format Date Handlebar Helper
