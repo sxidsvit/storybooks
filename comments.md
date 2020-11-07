@@ -1065,3 +1065,97 @@ router.post('/', ensureAuth, async (req, res) => {
 ---
 
 ### Format Date Handlebar Helper
+
+Создаем файл с хелперсами /helpers/hbs.js, в котором будут находится различные функции-помощники.
+Они нужны чтобы преобразовывать данные, которые выводятся в шаблоны, к удобному для пользователя виду:
+
+```js
+const moment = require('moment')
+
+module.exports = {
+  formatDate: function (date, format) {
+    return moment(date).utc().format(format)
+  },
+  truncate: function (str, len) {
+    if (str.length > len && str.length > 0) {
+      let new_str = str + ' '
+      new_str = str.substr(0, len)
+      new_str = str.substr(0, new_str.lastIndexOf(' '))
+      new_str = new_str.length > 0 ? new_str : str.substr(0, len)
+      return new_str + '...'
+    }
+    return str
+  },
+  stripTags: function (input) {
+    return input.replace(/<(?:.|\n)*?>/gm, '')
+  },
+  editIcon: function (storyUser, loggedUser, storyId, floating = true) {
+    if (storyUser._id.toString() == loggedUser._id.toString()) {
+      if (floating) {
+        return `<a href="/stories/edit/${storyId}" class="btn-floating halfway-fab blue"><i class="fas fa-edit fa-small"></i></a>`
+      } else {
+        return `<a href="/stories/edit/${storyId}"><i class="fas fa-edit"></i></a>`
+      }
+    } else {
+      return ''
+    }
+  },
+  select: function (selected, options) {
+    return options
+      .fn(this)
+      .replace(
+        new RegExp(' value="' + selected + '"'),
+        '$& selected="selected"'
+      )
+      .replace(
+        new RegExp('>' + selected + '</option>'),
+        ' selected="selected"$&'
+      )
+  },
+}
+```
+
+Хелперсы нужно подключить к шаблонизатору handlebars.
+
+app.js
+
+```js
+// Handlebars Helpers
+const {
+  formatDate,
+  stripTags,
+  truncate,
+  editIcon,
+  select,
+} = require('./helpers/hbs')
+
+// Handlebars
+app.engine(
+  '.hbs',
+  exphbs({
+    helpers: {
+      formatDate,
+      stripTags,
+      truncate,
+      editIcon,
+      select,
+    },
+    defaultLayout: 'main',
+    extname: '.hbs',
+  })
+)
+app.set('view engine', '.hbs')
+```
+
+Вот один из примеров подключения хелперса formatDate в шаблоне /views/dashboard.hbs
+
+````html
+<tr>
+  <td><a href="/stories/{{_id}}">{{title}}</a></td>
+  <td>{{formatDate createdAt 'MMMM Do YYYY, h:mm:ss a'}}</td>
+  <td><span class="dash-status">{{status}}</span></td>
+  <td>```</td>
+</tr>
+````
+
+---
