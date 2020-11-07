@@ -1159,3 +1159,91 @@ app.set('view engine', '.hbs')
 ````
 
 ---
+
+### Public Stories
+
+Создаём шаблон /views/stories/index.hbs для страницы с историями (заметками, постами)
+
+```html
+<h1>Stories</h1>
+<div class="row">
+  {{#each stories}}
+  <div class="col s12 m4">
+    <div class="card">
+      <div class="card-image">{{!-- {{{editIcon user ../user _id}}} --}}</div>
+      <div class="card-content center-align">
+        <h5>{{title}}</h5>
+        <p>{{stripTags (truncate body 150)}}</p>
+        <br />
+        <div class="chip">
+          <img src="{{user.image}}" alt="" />
+          <a href="/stories/user/{{user._id}}">{{user.displayName}}</a>
+        </div>
+      </div>
+      <div class="card-action center-align">
+        <a href="/stories/{{_id}}" class="btn grey">Read More</a>
+      </div>
+    </div>
+  </div>
+  {{else}}
+  <p>No stories to display</p>
+  {{/each}}
+</div>
+```
+
+В файл /helpers/hbs добавляем новые функции (хелперсы) и не забываем их также указать в файле app.js (код этих файлов приведен выше)
+
+Наконец в файл /routes/stories.js добавляем маршрут /stories/ :
+
+```js
+// @desc    Show all stories
+// @route   GET /stories
+router.get('/', ensureAuth, async (req, res) => {
+  try {
+    const stories = await Story.find({ status: 'public' })
+      .populate('user')
+      .sort({ createdAt: 'desc' })
+      .lean()
+
+    res.render('stories/index', {
+      stories,
+    })
+  } catch (err) {
+    console.error(err)
+    res.render('error/500')
+  }
+})
+```
+
+---
+
+### Truncate & StripTags Helpers
+
+/helpers/hbs.js
+
+```js
+ truncate: function (str, len) {
+    if (str.length > len && str.length > 0) {
+      let new_str = str + ' '
+      new_str = str.substr(0, len)
+      new_str = str.substr(0, new_str.lastIndexOf(' '))
+      new_str = new_str.length > 0 ? new_str : str.substr(0, len)
+      return new_str + '...'
+    }
+    return str
+  },
+  stripTags: function (input) {
+    return input.replace(/<(?:.|\n)*?>/gm, '')
+  },
+```
+
+/views/stories/index.hbs
+
+```html
+<h5>{{title}}</h5>
+<p>{{stripTags (truncate body 150)}}</p>
+```
+
+---
+
+### Edit Icon Helper
