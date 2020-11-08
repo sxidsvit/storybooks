@@ -1576,3 +1576,67 @@ router.delete('/:id', ensureAuth, async (req, res) => {
 ---
 
 ### Single Story Page
+
+В файле /routes/stories.js создаём get запрос на просмотр выбранной записи (story)
+
+```js
+// @desc    Show single story
+// @route   GET /stories/:id
+router.get('/:id', ensureAuth, async (req, res) => {
+  try {
+    let story = await Story.findById(req.params.id).populate('user').lean()
+
+    if (!story) {
+      return res.render('error/404')
+    }
+
+    if (story.user._id != req.user.id && story.status == 'private') {
+      res.render('error/404')
+    } else {
+      res.render('stories/show', {
+        story,
+      })
+    }
+  } catch (err) {
+    console.error(err)
+    res.render('error/404')
+  }
+})
+```
+
+Создаём шаблон /views/stories/show.hbs для показа одной записи (story):
+
+```html
+<div class="row">
+  <div class="col s12 m8">
+    <h3>
+      {{story.title}}
+      <small>{{{editIcon story.user user story._id false}}}</small>
+    </h3>
+    <div class="card story">
+      <div class="card-content">
+        <span class="card-title"
+          >{{formatDate date 'MMMM Do YYYY, h:mm:ss a'}}</span
+        >
+        {{{story.body}}}
+      </div>
+    </div>
+  </div>
+  <div class="col s12 m4">
+    <div class="card center-align">
+      <div class="card-content">
+        <span class="card-title">{{story.user.displayName}}</span>
+        <img
+          src="{{story.user.image}}"
+          class="circle responsive-img img-small"
+        />
+      </div>
+      <div class="card-action">
+        <a href="/stories/user/{{story.user._id}}"
+          >More From {{story.user.firstName}}</a
+        >
+      </div>
+    </div>
+  </div>
+</div>
+```
