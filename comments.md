@@ -1640,3 +1640,37 @@ router.get('/:id', ensureAuth, async (req, res) => {
   </div>
 </div>
 ```
+
+---
+
+### User Stories
+
+Осталось роут и шаблон для отображения всех записей выбранного пользователя.
+
+В файле /routes/stories.js создаём get запрос:
+
+```js
+// @desc    User stories
+// @route   GET /stories/user/:userId
+router.get('/user/:userId', ensureAuth, async (req, res) => {
+  try {
+    const stories = await Story.find({
+      user: req.params.userId,
+      status: 'public',
+    })
+      .populate('user')
+      .lean()
+
+    res.render('stories/index', {
+      stories,
+    })
+  } catch (err) {
+    console.error(err)
+    res.render('error/500')
+  }
+})
+```
+
+В качестве шаблона для отображения записей (stories) используется ранее созданный шаблон /views/stories/index.hbs
+
+---
