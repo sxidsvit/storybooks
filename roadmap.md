@@ -39,7 +39,9 @@ npm i -D nodemon cross-even
 
 Express-приложение может использовать любые базы данных, поддерживаемые Node
 
-##### Подключаемся MongoDB баззе данных (/config/db.js)
+---
+
+##### Подключаемся базе данных MongoDB (/config/db.js)
 
 ```js
 mongoose = require('mongoose')
@@ -59,6 +61,8 @@ const connectDB = async () => {
 }
 module.exports = connectDB
 ```
+
+---
 
 ##### Настраиваем app.js
 
