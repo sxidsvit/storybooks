@@ -1313,3 +1313,266 @@ This property is useful for exposing request-level information such as the reque
 ```
 
 Поскольку мы находимся на роутах, которые требуют авторизации пользователя. то на этих маршрутах присутствует объект req.user
+
+---
+
+### Edit Story
+
+Сначала создаем маршрут /routes/stories.js и для него устанавливаем ограничения: только авторизованный пользователь и автор _приватной_ заметки могут просматривать её
+
+```js
+// @desc    Show single story
+// @route   GET /stories/:id
+router.get('/:id', ensureAuth, async (req, res) => {
+  try {
+    let story = await Story.findById(req.params.id).populate('user').lean()
+
+    if (!story) {
+      return res.render('error/404')
+    }
+
+    if (story.user._id != req.user.id && story.status == 'private') {
+      res.render('error/404')
+    } else {
+      res.render('stories/show', {
+        story,
+      })
+    }
+  } catch (err) {
+    console.error(err)
+    res.render('error/404')
+  }
+})
+```
+
+Теперь создаём сам шаблон для заметки - /views/stories/show.hbs
+
+```js
+<div class="row">
+  <div class="col s12 m8">
+    <h3>
+      {{story.title}}
+      <small>{{{editIcon story.user user story._id false}}}</small>
+    </h3>
+    <div class="card story">
+      <div class="card-content">
+        <span class="card-title"
+          >{{formatDate date 'MMMM Do YYYY, h:mm:ss a'}}</span
+        >
+        {{{story.body}}}
+      </div>
+    </div>
+  </div>
+  <div class="col s12 m4">
+    <div class="card center-align">
+      <div class="card-content">
+        <span class="card-title">{{story.user.displayName}}</span>
+        <img
+          src="{{story.user.image}}"
+          class="circle responsive-img img-small"
+        />
+      </div>
+      <div class="card-action">
+        <a href="/stories/user/{{story.user._id}}"
+          >More From {{story.user.firstName}}</a
+        >
+      </div>
+    </div>
+  </div>
+</div>
+```
+
+Аналогично создаём роут для редактирования заметки /routes/stories.js, причём редактировать story может только её владелец.
+Роут должен использовать /layout/stories.hbs? так как нам нужен подключённый редактор CKEDITOR
+
+```js
+// @desc    Show edit page
+// @route   GET /stories/edit/:id
+router.get('/edit/:id', ensureAuth, async (req, res) => {
+  try {
+    const story = await Story.findOne({
+      _id: req.params.id,
+    }).lean()
+
+    if (!story) {
+      return res.render('error/404')
+    }
+
+    if (story.user != req.user.id) {
+      res.redirect('/stories')
+    } else {
+      res.render('stories/edit', {
+        story,
+        layout: 'stories',
+      })
+    }
+  } catch (err) {
+    console.error(err)
+    return res.render('error/500')
+  }
+})
+```
+
+Теперь создаём сам шаблон для редактирования заметки - /views/stories/edit.hbs
+За основу берем шаблон /views/stories/adds.hbs
+
+```html
+<h3>Edit Story</h3>
+<div class="row">
+  <form action="/stories/{{story._id}}" method="POST" class="col s12">
+    <input type="hidden" name="_method" value="PUT" />
+    <div class="row">
+      <div class="input-field">
+        <input type="text" id="title" name="title" value="{{story.title}}" />
+        <label for="title">Title</label>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="input-field">
+        <select id="status" name="status">
+          {{#select story.status}}
+          <option value="public" selected>Public</option>
+          <option value="private">Private</option>
+          {{/select}}
+        </select>
+        <label for="status">Status</label>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="input-field">
+        <h5>Tell Us Your Story:</h5>
+        <textarea id="body" name="body">{{story.body}}</textarea>
+      </div>
+    </div>
+
+    <div class="row">
+      <input type="submit" value="Save" class="btn" />
+      <a href="/dashboard" class="btn orange">Cancel</a>
+    </div>
+  </form>
+</div>
+```
+
+Тонкость этого шаблона - в использовании хелпера select.
+Он делает активным опцию соответствующую текущему статусу поста (public/private).
+Код хелпера был найден автором в интернете
+
+---
+
+### Method Override For PUT Requests
+
+После внесения правок в заметку (story) её нужно обновить в базе. Для этого нужно создать PUT request
+
+/routes/stories.js
+
+```js
+// @desc    Update story
+// @route   PUT /stories/:id
+router.put('/:id', ensureAuth, async (req, res) => {
+  try {
+    let story = await Story.findById(req.params.id).lean()
+
+    if (!story) {
+      return res.render('error/404')
+    }
+
+    if (story.user != req.user.id) {
+      res.redirect('/stories')
+    } else {
+      story = await Story.findOneAndUpdate({ _id: req.params.id }, req.body, {
+        new: true,
+        runValidators: true,
+      })
+
+      res.redirect('/dashboard')
+    }
+  } catch (err) {
+    console.error(err)
+    return res.render('error/500')
+  }
+})
+```
+
+Сейчас проблема в том, что когда шаблон /views/stories/edit.hbs отправляет форму он делает это методом POST.
+Нам нужно заменить его на PUT
+
+В app.js добавляем еще один модуль
+
+```js
+const methodOverride = require('method-override')
+
+...
+
+// Method override
+app.use(
+  methodOverride(function (req, res) {
+    if (req.body && typeof req.body === 'object' && '_method' in req.body) {
+      // look in urlencoded POST bodies and delete it
+      let method = req.body._method
+      delete req.body._method
+      return method
+    }
+  })
+)
+```
+
+Модуль method-override позволяет "_use HTTP verbs such as PUT or DELETE in places where the client doesn't support it_"
+
+В [документации](https://www.npmjs.com/package/method-override#custom-logic) приводится код middliware, который мы вставляем в app.js, а также добавляем скрытое поле в /views/stories/edit.hbs
+
+Таким образом, маршрутизатор анализирует содержание тела запроса и если оно содержит поле \_method, то заменяем им метод запроса и удаляем поле \_metthod из тела запроса
+
+---
+
+### Method Override For DELETE Requests
+
+В файле /routes/stories.js создаём запрос на удаление story
+
+```js
+// @desc    Delete story
+// @route   DELETE /stories/:id
+router.delete('/:id', ensureAuth, async (req, res) => {
+  try {
+    let story = await Story.findById(req.params.id).lean()
+
+    if (!story) {
+      return res.render('error/404')
+    }
+
+    if (story.user != req.user.id) {
+      res.redirect('/stories')
+    } else {
+      await Story.remove({ _id: req.params.id })
+      res.redirect('/dashboard')
+    }
+  } catch (err) {
+    console.error(err)
+    return res.render('error/500')
+  }
+})
+```
+
+Разумеется, что удалить запись может только её создатель.
+
+В файле /views/dashboard.hbs нужно добавить кнопку и форму для удаления записи. Форма нужна чтобы в дальнейшем в роутере POST-запрос заменить на PUT-запрос
+
+```html
+<td>
+  <a href="/stories/edit/{{_id}}" class="btn btn-float">
+    <i class="fas fa-edit"></i>
+  </a>
+
+  <form action="/stories/{{_id}}" method="POST" id="delete-form">
+    <input type="hidden" name="_method" value="DELETE" />
+    <button type="submit" class="btn red">
+      <i class="fas fa-trash"></i>
+    </button>
+  </form>
+</td>
+```
+
+---
+
+### Single Story Page
